@@ -8,11 +8,7 @@ on:
 
 jobs:
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +21,6 @@ jobs:
 
       # egui needs these to link; the headless build below does not.
       - name: Install GUI build dependencies
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libxkbcommon-dev libwayland-dev libgtk-3-dev \
@@ -40,17 +35,14 @@ jobs:
       # Proves the CLI/HTTP path still builds without a display stack.
       # Runs before the real build: same bin path, so it must not be what we ship.
       - name: Build headless
-        if: runner.os == 'Linux'
         run: cargo build --release --no-default-features
 
       - run: cargo build --release
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rsttherm-${{ runner.os }}
-          path: |
-            target/release/rsttherm
-            target/release/rsttherm.exe
+          name: rsttherm
+          path: target/release/rsttherm
           if-no-files-found: error
 
   release:
@@ -62,10 +54,9 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: rsttherm-*
-          merge-multiple: true
+          name: rsttherm
 
-      - run: gh release create "$GITHUB_REF_NAME" rsttherm rsttherm.exe --generate-notes
+      - run: gh release create "$GITHUB_REF_NAME" rsttherm --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
