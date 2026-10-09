@@ -2,9 +2,9 @@
 
 This is my attempt to get the Thermal Master P3 thermal camera running on Linux, with:
 
-- a driver (based on [jvdillon/p3-ir-camera](https://github.com/jvdillon/p3-ir-camera); see [Credits](#credits))
-- a CLI and HTTP API to retrieve images programmatically
-- a live viewer GUI (see [Viewer](#viewer))
+- Driver (based on [jvdillon/p3-ir-camera](https://github.com/jvdillon/p3-ir-camera); see [Credits](#credits))
+- CLI and HTTP API to retrieve images programmatically
+- ive viewer GUI (see [Viewer](#viewer))
 
 ## Install
 
@@ -65,40 +65,18 @@ image). `rsttherm gui` also serves this API, using the viewer's correction setti
 
 ![Screenshot of the GUI](docs/screenshot-1.png)
 
-- Camera picker at the top of the sidebar, listing connected cameras by model and
-  serial number. `-d` selects the initial camera.
+- Camera picker. `-d` selects the initial camera.
 - Palettes: ironbow, rainbow, inferno, white hot, black hot, with a colour bar.
-- Colour range: automatic (ignores the hottest and coldest 1 % so a single hot pixel
-  doesn't flatten the scene), or fixed and adjusted using `Manual`.
-- Markers for the centre, the hottest pixel and the coldest pixel. Click the image to add spot
-  meters; right-click a spot meter to remove it. Hovering shows the temperature under the cursor.
-- Correction: emissivity, reflected temperature, and a calibration offset added to every
-  reading.
+- Colour range: automatic (ignores the hottest and coldest), or fixed and adjusted using `Manual`.
+- Markers for the centre, the hottest pixel and the coldest pixel.
+- Correction: emissivity, reflected temperature, and calibration offset
 - Shutter/NUC button for a flat-field calibration on demand.
 - Zoom up to 8× with the mouse wheel or a pinch, around the pointer; drag to pan.
-  The −, + and Fit buttons and the zoom factor appear over the image while the pointer is
-  on it. Spots and markers follow the zoom.
 - Noise reduction (Off, Low, High) averages each pixel over several frames to reduce
-  sensor flicker. A pixel that changes by more than 0.5 K is shown immediately, so
-  moving objects don't smear. Noise reduction applies to the viewer only; `measure` and the HTTP API
-  report raw frames.
-- Rotate and mirror.
-- Snapshot: the image with its overlays as PNG, and the temperatures as CSV (noise
-  reduction included), written to the working directory.
+  sensor flicker.
+- Snapshot: the image as PNG, and the temperatures as CSV (noise reduction included), written to the working directory.
 
 Settings and the window position are remembered across restarts.
-
-## Notes on the hardware
-
-- Readings represent the camera's apparent temperature (1/64 K per count) and assume a black
-  body. Emissivity is corrected with the Stefan–Boltzmann approximation; the offset
-  can compensate for remaining error.
-- The camera runs a shutter calibration by itself about every 90 s, with an audible
-  click. The frame immediately after a shutter calibration is malformed and is dropped.
-- Allow a few minutes of warm-up before trusting absolute readings.
-- The camera runs in high-gain mode, covering −20 to 150 °C. It also has a low-gain mode for up to
-  550 °C, but on firmware 00.00.02.18 its readings are about 57 K too low at room
-  temperature. No conversion for these readings is known, so rsttherm doesn't offer this mode.
 
 ## Credits
 
