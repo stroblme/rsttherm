@@ -532,30 +532,27 @@ impl Viewer {
 
         heading(ui, "Correction");
         let c = &mut self.s.correction;
-        egui::Grid::new("correction")
-            .num_columns(2)
-            .spacing(vec2(2.0 * GAP, GAP))
-            .show(ui, |ui| {
-                ui.label("Emissivity").on_hover_text(
-                    "0.95 for skin, paint, wood and plastics; bare metal reads wrong at any setting",
-                );
-                ui.add(
-                    egui::DragValue::new(&mut c.emissivity)
-                        .speed(0.01)
-                        .range(0.1..=1.0)
-                        .fixed_decimals(2),
-                );
-                ui.end_row();
-                ui.label("Reflected")
-                    .on_hover_text("temperature of what the surface reflects, usually the room");
-                ui.add(degrees(&mut c.reflected));
-                ui.end_row();
-                ui.label("Offset").on_hover_text(
-                    "added to every reading: aim at something of known temperature and dial out the difference",
-                );
-                ui.add(degrees(&mut c.offset).speed(0.05));
-                ui.end_row();
-            });
+        field(
+            ui,
+            "Emissivity",
+            "0.95 for skin, paint, wood and plastics; bare metal reads wrong at any setting",
+            egui::DragValue::new(&mut c.emissivity)
+                .speed(0.01)
+                .range(0.1..=1.0)
+                .fixed_decimals(2),
+        );
+        field(
+            ui,
+            "Reflected",
+            "temperature of what the surface reflects, usually the room",
+            degrees(&mut c.reflected),
+        );
+        field(
+            ui,
+            "Offset",
+            "added to every reading: aim at something of known temperature and dial out the difference",
+            degrees(&mut c.offset).speed(0.05),
+        );
 
         heading(ui, "Noise reduction");
         ui.horizontal(|ui| {
@@ -579,13 +576,17 @@ impl Viewer {
         });
 
         heading(ui, "Markers");
-        ui.checkbox(&mut self.s.center, "Centre");
-        ui.checkbox(&mut self.s.extremes, "Min / max");
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.s.center, "Centre");
+            ui.checkbox(&mut self.s.extremes, "Min / max");
+        });
         ui.horizontal(|ui| {
             ui.label(format!("{} spots", self.spots.len()));
-            if ui.button("Clear").clicked() {
-                self.spots.clear();
-            }
+            ui.with_layout(right_to_left(), |ui| {
+                if ui.button("Clear").clicked() {
+                    self.spots.clear();
+                }
+            });
         });
         ui.label(
             RichText::new("Click the image to add a spot, right-click to remove one.")
@@ -600,10 +601,12 @@ impl Viewer {
                 self.spots.clear();
                 self.view = FULL;
             }
-            if ui.checkbox(&mut self.s.mirror, "Mirror").changed() {
-                self.spots.clear();
-                self.view = FULL;
-            }
+            ui.with_layout(right_to_left(), |ui| {
+                if ui.checkbox(&mut self.s.mirror, "Mirror").changed() {
+                    self.spots.clear();
+                    self.view = FULL;
+                }
+            });
         });
         ui.add_space(GAP);
         if ui
@@ -721,9 +724,9 @@ impl Viewer {
             )
         };
         // Markers zoomed out of view are skipped rather than pinned to the edge.
-        let mark_visible = |at: Pos2, text: String, colour: Color32| {
+        let mark_visible = |at: Pos2, text: String, colour: Color32, family: FontFamily| {
             if rect.contains(at) {
-                mark(painter, rect, at, text, colour);
+                mark(painter, rect, at, text, colour, family);
             }
         };
 
@@ -751,21 +754,43 @@ impl Viewer {
             for ((t, i), name, colour) in
                 [(stats.max, "max", pal::HOT), (stats.min, "min", pal::COLD)]
             {
-                mark_visible(to_screen((i % w, i / w)), format!("{name} {t:.1}"), colour);
+                mark_visible(
+                    to_screen((i % w, i / w)),
+                    format!("{name} {t:.1}"),
+                    colour,
+                    FontFamily::Proportional,
+                );
             }
         }
         if self.s.center {
             let text = reading(Some(image.center()));
-            mark_visible(to_screen((w / 2, h / 2)), text, pal::TEXT);
+            mark_visible(
+                to_screen((w / 2, h / 2)),
+                text,
+                pal::TEXT,
+                FontFamily::Proportional,
+            );
         }
-        for (n, &(x, y)) in self.spots.iter().enumerate() {
-            let text = format!("{} {}", n + 1, reading(image.at(x, y)));
-            mark_visible(to_screen((x, y)), text, pal::TEXT);
+        // Spots in bold, to tell them from the centre marker.
+        for &(x, y) in &self.spots {
+            mark_visible(
+                to_screen((x, y)),
+                reading(image.at(x, y)),
+                pal::TEXT,
+                semibold(),
+            );
         }
         if let Some(p) = response.hover_pos() {
             let (x, y) = to_pixel(p);
             let text = format!("{} °C", reading(image.at(x, y)));
-            tag(painter, rect, p + vec2(14.0, 14.0), text, pal::TEXT);
+            tag(
+                painter,
+                rect,
+                p + vec2(14.0, 14.0),
+                text,
+                pal::TEXT,
+                FontFamily::Proportional,
+            );
         }
 
         let legend = self.legend(painter, rect);
@@ -826,14 +851,22 @@ impl Viewer {
             at.x = rect.right() + 4.0;
         }
         let zoom = format!("×{:.1}", 1.0 / self.view.width());
-        tag(&painter, image, at + vec2(3.0, 4.0), zoom, pal::TEXT);
+        tag(
+            &painter,
+            image,
+            at + vec2(3.0, 4.0),
+            zoom,
+            pal::TEXT,
+            FontFamily::Proportional,
+        );
     }
 
     /// Colour bar with five evenly spaced labels; returns the area it used.
     fn legend(&self, painter: &Painter, image: Rect) -> Rect {
+        // Inset, so the end labels keep clear of the window edge.
         let bar = Rect::from_min_size(
-            pos2(image.right() + 2.0 * GAP, image.top()),
-            vec2(BAR, image.height()),
+            pos2(image.right() + 2.0 * GAP, image.top() + PAD),
+            vec2(BAR, (image.height() - 2.0 * PAD).max(0.0)),
         );
         let lut = self.palette();
         let slices = 64;
@@ -916,6 +949,18 @@ fn heading(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).family(semibold()).color(pal::MUTED));
 }
 
+/// A label, and its number field against the right edge.
+fn field(ui: &mut Ui, label: &str, hint: &str, value: egui::DragValue) {
+    ui.horizontal(|ui| {
+        ui.label(label).on_hover_text(hint);
+        ui.with_layout(right_to_left(), |ui| ui.add(value));
+    });
+}
+
+fn right_to_left() -> egui::Layout {
+    egui::Layout::right_to_left(egui::Align::Center)
+}
+
 fn degrees(value: &mut f32) -> egui::DragValue<'_> {
     egui::DragValue::new(value)
         .speed(0.1)
@@ -924,7 +969,14 @@ fn degrees(value: &mut f32) -> egui::DragValue<'_> {
 }
 
 /// A crosshair that reads on any palette, with a labelled reading.
-fn mark(painter: &Painter, bounds: Rect, at: Pos2, text: String, colour: Color32) {
+fn mark(
+    painter: &Painter,
+    bounds: Rect,
+    at: Pos2,
+    text: String,
+    colour: Color32,
+    family: FontFamily,
+) {
     for stroke in [
         Stroke::new(3.0, Color32::BLACK),
         Stroke::new(1.0, Color32::WHITE),
@@ -938,12 +990,19 @@ fn mark(painter: &Painter, bounds: Rect, at: Pos2, text: String, colour: Color32
             painter.line_segment([at + d * 3.0, at + d * 8.0], stroke);
         }
     }
-    tag(painter, bounds, at + vec2(9.0, -22.0), text, colour);
+    tag(painter, bounds, at + vec2(9.0, -22.0), text, colour, family);
 }
 
 /// Text on a dark pill, kept inside `bounds`.
-fn tag(painter: &Painter, bounds: Rect, at: Pos2, text: String, colour: Color32) {
-    let galley = painter.layout_no_wrap(text, FontId::proportional(12.0), colour);
+fn tag(
+    painter: &Painter,
+    bounds: Rect,
+    at: Pos2,
+    text: String,
+    colour: Color32,
+    family: FontFamily,
+) {
+    let galley = painter.layout_no_wrap(text, FontId::new(12.0, family), colour);
     let r = Rect::from_min_size(at, galley.size()).expand(3.0);
     let shift = vec2(
         (bounds.right() - r.right()).min(0.0) + (bounds.left() - r.left()).max(0.0),
