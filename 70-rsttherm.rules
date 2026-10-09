@@ -1,0 +1,4 @@
+# Thermal Master P3 and P1: the logged-in desktop user gets access through uaccess,
+# services through the video group. Numbered below 73 so uaccess still applies.
+SUBSYSTEM=="usb", ATTR{idVendor}=="3474", ATTR{idProduct}=="45a2", MODE="0660", GROUP="video", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTR{idVendor}=="3474", ATTR{idProduct}=="45c2", MODE="0660", GROUP="video", TAG+="uaccess"
