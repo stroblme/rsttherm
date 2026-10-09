@@ -63,6 +63,8 @@ image). `rsttherm gui` also serves this API, using the viewer's correction setti
 
 ## Viewer
 
+![Screenshot of the GUI](docs/screenshot-1.png)
+
 - Camera picker at the top of the sidebar, listing connected cameras by model and
   serial number. `-d` selects the initial camera.
 - Palettes: ironbow, rainbow, inferno, white hot, black hot, with a colour bar.
