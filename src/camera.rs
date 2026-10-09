@@ -4,8 +4,7 @@
 //!
 //! The cameras are vendor-class USB devices rather than UVC, so there is no
 //! kernel driver to go through: everything is control and bulk transfers from
-//! user space via nusb, which works the same on Linux, Windows (WinUSB) and
-//! macOS. That is also why there is no per-OS backend here.
+//! user space via nusb.
 //!
 //! The protocol was reverse-engineered from USB captures of the vendor's
 //! Windows tool by [p3-ir-camera](https://github.com/jvdillon/p3-ir-camera)
@@ -52,9 +51,9 @@ const FRAME_TIMEOUT: Duration = Duration::from_secs(5);
 const FRAME_ENDPOINT: u8 = 0x81;
 /// Every frame is wrapped in a 12-byte start and end marker; see [`assemble`].
 const MARKER: usize = 12;
-/// The reference driver found plain 16 KiB reads to be what works on all three
-/// OSes; exact-size reads matching the vendor tool overflow on macOS and wedge
-/// WinUSB.
+/// Plain 16 KiB reads, as in the reference driver. Frame boundaries come from
+/// the end-marker transfer in [`assemble`], so reads need not match the vendor
+/// tool's transfer sizes.
 const CHUNK: usize = 16 * 1024;
 /// Transfers kept queued so the camera never waits on us between reads.
 const IN_FLIGHT: usize = 4;
