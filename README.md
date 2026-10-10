@@ -27,9 +27,8 @@ cargo build --release              # CLI + HTTP + viewer
 cargo build --release --no-default-features   # headless: no viewer, no display libraries
 ```
 
-Installation may prompt for `sudo` access: the camera is not a webcam and does not
-appear as `/dev/video*`. Accessing it over raw USB requires installing a `udev` rule
-(use `make udev` to install just the rule). `make uninstall` removes the rule.
+Note that the installation may prompt for `sudo` access as the camera is not a webcam and therefore does not appear as `/dev/video*`. 
+Accessing it over raw USB requires installing a `udev` rule (use `make udev` to install just the rule). `make uninstall` removes the rule.
 
 ## CLI
 
@@ -85,6 +84,7 @@ Settings and the window position are remembered across restarts.
 ## Android
 
 Plug the camera into the USB-C port and Android offers to open rsttherm.
+Each release comes with a signed `rsttherm.apk` to sideload.
 
 ```sh
 make android-tools                 # Rust targets and cargo-ndk, once
@@ -98,8 +98,5 @@ Snapshots are written to `Download/rsttherm/` (Android 10 and older:
 
 ## Credits
 
-The USB protocol (command bytes, the start-up sequence with its delays, frame layout
-and resynchronisation) was reverse-engineered in
-[p3-ir-camera](https://github.com/jvdillon/p3-ir-camera) (Apache-2.0) and the
-discussion in its [issue #2](https://github.com/jvdillon/p3-ir-camera/issues/2). The
-driver here is a fresh Rust implementation of that protocol.
+The USB protocol (command bytes, the start-up sequence with its delays, frame layout and resynchronisation) was reverse-engineered in [p3-ir-camera](https://github.com/jvdillon/p3-ir-camera) (Apache-2.0) and the discussion in its [issue #2](https://github.com/jvdillon/p3-ir-camera/issues/2).
+The driver here is a fresh Rust implementation of that protocol.
