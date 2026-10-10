@@ -1,5 +1,9 @@
 # rsttherm
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/stroblme/rsttherm/refs/heads/main/docs/icon.svg" width="160" alt="rsttherm logo">
+</p>
+
 This is my attempt to get the Thermal Master P3 thermal camera running on Linux, with:
 
 - Driver (based on [jvdillon/p3-ir-camera](https://github.com/jvdillon/p3-ir-camera); see [Credits](#credits))
@@ -77,6 +81,20 @@ image). `rsttherm gui` also serves this API, using the viewer's correction setti
 - Snapshot: the image as PNG, and the temperatures as CSV (noise reduction included), written to the working directory.
 
 Settings and the window position are remembered across restarts.
+
+## Android
+
+Plug the camera into the USB-C port and Android offers to open rsttherm.
+
+```sh
+make android-tools                 # Rust targets and cargo-ndk, once
+make apk                           # android/app/build/outputs/apk/debug/app-debug.apk
+make apk-install                   # install it on the phone connected via adb
+```
+
+Building needs a JDK and the Android SDK with the NDK, in `~/Android/Sdk`.
+Snapshots are written to `Download/rsttherm/` (Android 10 and older:
+`Android/data/io.github.stroblme.rsttherm/files/`).
 
 ## Credits
 
