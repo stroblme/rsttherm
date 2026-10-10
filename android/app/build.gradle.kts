@@ -23,6 +23,21 @@ android {
         // library at all.
         jniLibs { useLegacyPackaging = false }
     }
+
+    // A release is signed with the keystore these name, as CI does for a tag
+    // (.github/workflows/ci.yml); without them assembleRelease leaves the APK unsigned. One key
+    // for every release, so each installs over the last.
+    val keystore = System.getenv("RSTTHERM_KEYSTORE")
+    if (keystore != null) {
+        val release = signingConfigs.create("release") {
+            storeFile = file(keystore)
+            storePassword = System.getenv("RSTTHERM_KEYSTORE_PASSWORD")
+            keyAlias = "rsttherm"
+            // A PKCS12 keystore, keytool's default, has one password for both.
+            keyPassword = storePassword
+        }
+        buildTypes.getByName("release").signingConfig = release
+    }
 }
 
 // The viewer, cross-compiled into `src/main/jniLibs/<abi>/`. Gradle runs the same `make` target

@@ -45,18 +45,58 @@ jobs:
           path: target/release/rsttherm
           if-no-files-found: error
 
+  # The APK, for a release only: the Rust it carries is checked by the build above.
+  android:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Gradle and AGP need a JDK; the runner image brings the Android SDK and NDK.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: make android-tools
+
+      # Signed with the repository's keystore, so each release installs over the last.
+      - name: Build the APK
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          RSTTHERM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE" ] || { echo "::error::the ANDROID_KEYSTORE secret is not set"; exit 1; }
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          RSTTHERM_KEYSTORE="$RUNNER_TEMP/release.jks" make apk-release
+          cp android/app/build/outputs/apk/release/app-release.apk rsttherm.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsttherm-apk
+          path: rsttherm.apk
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, android]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      # Both artifacts, side by side.
       - uses: actions/download-artifact@v4
         with:
-          name: rsttherm
+          merge-multiple: true
 
-      - run: gh release create "$GITHUB_REF_NAME" rsttherm --generate-notes
+      - run: gh release create "$GITHUB_REF_NAME" rsttherm rsttherm.apk --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

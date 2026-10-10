@@ -16,7 +16,7 @@ ARCH_DEPS := pkgconf libxkbcommon wayland gtk3 libxcb
 export ANDROID_HOME ?= $(HOME)/Android/Sdk
 
 .PHONY: all dep udev build headless install uninstall check fmt clippy test run clean \
-	android-tools android apk apk-install
+	android-tools android apk apk-release apk-install
 
 all: dep build install
 
@@ -85,6 +85,11 @@ android:
 # Debug-signed, which is all sideloading needs. Gradle runs `make android` itself.
 apk:
 	cd android && ./gradlew assembleDebug
+
+# Signed when RSTTHERM_KEYSTORE and RSTTHERM_KEYSTORE_PASSWORD are set, as CI does for a tag;
+# unsigned (app-release-unsigned.apk) otherwise.
+apk-release:
+	cd android && ./gradlew assembleRelease
 
 apk-install: apk
 	$(ANDROID_HOME)/platform-tools/adb install -r android/app/build/outputs/apk/debug/app-debug.apk
