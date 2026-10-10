@@ -3,18 +3,14 @@
 //! rsttherm -- Thermal Master P1/P3 USB thermal cameras: a CLI, an HTTP API and
 //! a live viewer sharing one driver.
 
-mod camera;
-#[cfg(feature = "gui")]
-mod gui;
-mod http;
-mod live;
-mod thermal;
-
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand};
 
-use thermal::Correction;
+#[cfg(feature = "gui")]
+use rsttherm::gui;
+use rsttherm::thermal::{self, Correction};
+use rsttherm::{camera, http, live};
 
 /// Same split as rstptz: 0 ok, 8 bad syntax, 16 command failed.
 const EXIT_USAGE: u8 = 8;
@@ -155,7 +151,7 @@ fn run(cli: Cli) -> camera::Result<()> {
             correction,
         } => http::serve(&live::Live::start(device, correction.into()), &bind, port)?,
         #[cfg(feature = "gui")]
-        Command::Gui => gui::run(device)?,
+        Command::Gui => gui::run(device, Default::default())?,
     }
     Ok(())
 }

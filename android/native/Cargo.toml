@@ -1,0 +1,20 @@
+[package]
+name = "rsttherm-android"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+# Not published, not built by a desktop `cargo build`: it is only in `members`, never in
+# `default-members`.
+publish = false
+
+# The shared library the APK loads. A cdylib of its own rather than a second crate-type on
+# rsttherm, so desktop builds never link a shared object nobody loads.
+[lib]
+name = "rsttherm_android"
+crate-type = ["cdylib"]
+
+[dependencies]
+rsttherm = { path = "../.." }
+# Picks winit's NativeActivity backend. It is the same eframe rsttherm depends on, so the feature
+# reaches the viewer through Cargo's feature unification.
+eframe = { version = "0.36.0", default-features = false, features = ["android-native-activity"] }

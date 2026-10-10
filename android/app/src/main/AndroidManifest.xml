@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- The camera is a raw USB device, not a webcam; egui draws through GLES 3. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="true" />
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+
+    <!--
+      No Java or Kotlin: the activity is the platform's, the app is the Rust library.
+      Fullscreen (res/values/themes.xml), as NativeActivity draws its whole window and the
+      status bar would cover it.
+    -->
+    <application
+        android:hasCode="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="rsttherm"
+        android:theme="@style/Fullscreen">
+
+        <!--
+          One activity that is never recreated: a second instance, or a restart on rotation,
+          would call android_main again in the same process, and winit cannot build a second
+          event loop.
+        -->
+        <activity
+            android:name="android.app.NativeActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|density|uiMode">
+
+            <meta-data android:name="android.app.lib_name" android:value="rsttherm_android" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Plugging in a camera offers to open the app, and doing so grants it the device. -->
+            <intent-filter>
+                <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
+                android:resource="@xml/device_filter" />
+        </activity>
+    </application>
+</manifest>

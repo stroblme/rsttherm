@@ -16,7 +16,6 @@ use crate::thermal::{Correction, Image};
 enum Cmd {
     Shutter,
     /// Switch to the camera with this [`camera::Device::id`].
-    #[cfg_attr(not(feature = "gui"), allow(dead_code))]
     Select(String),
 }
 
@@ -87,7 +86,6 @@ impl Live {
     }
 
     /// The id of the camera being streamed, if one is open.
-    #[cfg_attr(not(feature = "gui"), allow(dead_code))]
     pub fn device(&self) -> Option<String> {
         self.device.lock().unwrap().clone()
     }
@@ -98,7 +96,6 @@ impl Live {
     }
 
     /// Closes the current camera and streams from the one with this id instead.
-    #[cfg_attr(not(feature = "gui"), allow(dead_code))]
     pub fn select(&self, id: String) {
         let _ = self.tx.send(Cmd::Select(id));
     }

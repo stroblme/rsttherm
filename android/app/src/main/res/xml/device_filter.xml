@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Thermal Master P3 (3474:45a2) and P1 (3474:45c2); the manifest wants decimal IDs. -->
+<resources>
+    <usb-device vendor-id="13428" product-id="17826" />
+    <usb-device vendor-id="13428" product-id="17858" />
+</resources>

@@ -9,6 +9,7 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::sync::Arc;
+#[cfg(not(target_os = "android"))]
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -20,6 +21,7 @@ use egui::{
 use serde::{Deserialize, Serialize};
 
 use crate::camera::{self, Device, Frame};
+#[cfg(not(target_os = "android"))]
 use crate::http;
 use crate::live::Live;
 use crate::thermal::{Correction, Image};
@@ -44,12 +46,18 @@ mod pal {
 
 const GAP: f32 = 6.0;
 const PAD: f32 = 12.0;
-const ROW: f32 = 28.0;
+/// Taller on a phone, where a row is a finger's target; see `theme`.
+const ROW: f32 = if cfg!(target_os = "android") {
+    36.0
+} else {
+    28.0
+};
 const SIDEBAR: f32 = 232.0;
-const CONTENT: f32 = SIDEBAR - 2.0 * PAD;
 const BAR: f32 = 14.0;
 /// Room right of the image for the colour bar and its labels.
 const LEGEND: f32 = 2.0 * GAP + BAR + 50.0;
+/// Room below the image for the colour bar and its labels, in portrait.
+const LEGEND_BELOW: f32 = 3.0 * GAP + BAR + 16.0;
 /// The auto range never gets narrower than this, so a uniform scene shows as
 /// a uniform colour instead of sensor noise stretched over the whole palette.
 const MIN_SPAN: f32 = 2.0;
@@ -137,6 +145,20 @@ fn rotated(image: &Image) -> Image {
             })
             .collect(),
     }
+}
+
+/// Quarter turns clockwise on top of the user's. Plugged into a phone, the
+/// camera turns with it, and its picture sits a quarter turn counter-clockwise
+/// (three clockwise) off the phone's natural orientation; the screen's content
+/// turns against the phone, so the picture turns back by as much to stay put.
+#[cfg(target_os = "android")]
+fn mount_turns() -> u8 {
+    (3 + 4 - crate::android::display_turns() % 4) % 4
+}
+
+#[cfg(not(target_os = "android"))]
+fn mount_turns() -> u8 {
+    0
 }
 
 /// Flipped left to right.
@@ -245,8 +267,11 @@ impl Default for Settings {
     }
 }
 
-pub fn run(device: Option<String>) -> camera::Result<()> {
+/// Runs the viewer until its window is closed. `options` carries what the
+/// platform supplies, such as Android's app handle; the window size is set here.
+pub fn run(device: Option<String>, options: eframe::NativeOptions) -> camera::Result<()> {
     let live = Live::start(device, Correction::DEFAULT);
+    #[cfg(not(target_os = "android"))]
     {
         // One process covers both the viewer and HTTP clients.
         let live = Arc::clone(&live);
@@ -261,7 +286,7 @@ pub fn run(device: Option<String>) -> camera::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1110.0, 640.0])
             .with_min_inner_size([640.0, 480.0]),
-        ..Default::default()
+        ..options
     };
     eframe::run_native(
         "rsttherm",
@@ -304,6 +329,13 @@ fn theme(ctx: &egui::Context) {
         style.spacing.item_spacing = vec2(GAP, GAP);
         style.spacing.button_padding = vec2(10.0, 5.0);
         style.spacing.interact_size.y = 24.0;
+        if cfg!(target_os = "android") {
+            // Fields and checkboxes a finger can hit: with the zoom below, rows
+            // come to about 45 dp, near Android's 48 dp guideline.
+            style.spacing.interact_size.y = 32.0;
+            style.spacing.icon_width = 20.0;
+            style.spacing.icon_width_inner = 12.0;
+        }
 
         style.text_styles = [
             (TextStyle::Small, FontId::proportional(11.0)),
@@ -341,6 +373,11 @@ fn theme(ctx: &egui::Context) {
             widget.expansion = 0.0;
         }
     });
+    // Everything a quarter larger on a phone: body text at Android's 16 sp
+    // rather than the desktop's 13 pt.
+    if cfg!(target_os = "android") {
+        ctx.set_zoom_factor(1.25);
+    }
 }
 
 /// The bold family registered by `theme`.
@@ -356,6 +393,8 @@ struct Viewer {
     frame: Option<Arc<Frame>>,
     /// That frame, corrected and turned the way it is shown.
     image: Option<Image>,
+    /// Quarter turns clockwise `image` is shown at, from the camera's own.
+    turns: u8,
     /// The auto range, smoothed.
     auto: [f32; 2],
     /// Pixels in `image` coordinates.
@@ -394,6 +433,7 @@ impl Viewer {
             fps: 0.0,
             last_frame: Instant::now(),
             average: Vec::new(),
+            turns: 0,
             view: FULL,
             pointer_seen: None,
             devices: camera::list_devices().unwrap_or_default(),
@@ -443,7 +483,14 @@ impl Viewer {
         };
 
         let mut image = Image::new(source, &self.s.correction);
-        for _ in 0..self.s.turns % 4 {
+        let turns = (self.s.turns + mount_turns()) % 4;
+        if turns != self.turns {
+            // Spots and the zoom are in the turned image's coordinates.
+            self.turns = turns;
+            self.spots.clear();
+            self.view = FULL;
+        }
+        for _ in 0..turns {
             image = rotated(&image);
         }
         if self.s.mirror {
@@ -482,11 +529,31 @@ impl Viewer {
         self.image = Some(image);
     }
 
+    /// The controls, scrolling when they do not fit.
+    fn scrolled_controls(&mut self, ui: &mut Ui) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            self.controls(ui);
+            // A phone's keyboard shrinks the panel: keep the field being typed
+            // in on screen.
+            let ctx = ui.ctx().clone();
+            if ctx.text_edit_focused()
+                && let Some(field) = ctx
+                    .memory(|m| m.focused())
+                    .and_then(|id| ctx.read_response(id))
+            {
+                ui.scroll_to_rect(field.rect, None);
+            }
+        });
+    }
+
+    /// Rows span the width they are given, the sidebar's or, in portrait, the
+    /// screen's; anything wider would push the sidebar off-screen.
     fn controls(&mut self, ui: &mut Ui) {
+        let width = ui.available_width();
         heading(ui, "Camera");
         self.camera_picker(ui);
         if ui
-            .add_sized(vec2(CONTENT, ROW), egui::Button::new("Shutter / NUC"))
+            .add_sized(vec2(width, ROW), egui::Button::new("Shutter / NUC"))
             .on_hover_text("flat-field calibration; the camera also runs one about every 90 s")
             .clicked()
         {
@@ -496,7 +563,7 @@ impl Viewer {
         heading(ui, "Palette");
         egui::ComboBox::from_id_salt("palette")
             .selected_text(PALETTES[self.s.palette.min(PALETTES.len() - 1)].0)
-            .width(CONTENT)
+            .width(width)
             .show_ui(ui, |ui| {
                 for (i, (name, _)) in PALETTES.iter().enumerate() {
                     ui.selectable_value(&mut self.s.palette, i, *name);
@@ -505,7 +572,7 @@ impl Viewer {
 
         heading(ui, "Range");
         ui.horizontal(|ui| {
-            let half = vec2((CONTENT - GAP) / 2.0, ROW);
+            let half = vec2((width - GAP) / 2.0, ROW);
             let auto = self.s.range.is_none();
             if ui
                 .add_sized(half, egui::Button::selectable(auto, "Auto"))
@@ -556,7 +623,7 @@ impl Viewer {
 
         heading(ui, "Noise reduction");
         ui.horizontal(|ui| {
-            let third = vec2((CONTENT - 2.0 * GAP) / 3.0, ROW);
+            let third = vec2((width - 2.0 * GAP) / 3.0, ROW);
             for (level, name) in [
                 (Denoise::Off, "Off"),
                 (Denoise::Low, "Low"),
@@ -589,17 +656,19 @@ impl Viewer {
             });
         });
         ui.label(
-            RichText::new("Click the image to add a spot, right-click to remove one.")
-                .small()
-                .color(pal::MUTED),
+            RichText::new(if cfg!(target_os = "android") {
+                "Tap the image to add a spot, long-press to remove one."
+            } else {
+                "Click the image to add a spot, right-click to remove one."
+            })
+            .small()
+            .color(pal::MUTED),
         );
 
         heading(ui, "View");
         ui.horizontal(|ui| {
             if ui.button("Rotate").clicked() {
                 self.s.turns = (self.s.turns + 1) % 4;
-                self.spots.clear();
-                self.view = FULL;
             }
             ui.with_layout(right_to_left(), |ui| {
                 if ui.checkbox(&mut self.s.mirror, "Mirror").changed() {
@@ -610,7 +679,7 @@ impl Viewer {
         });
         ui.add_space(GAP);
         if ui
-            .add_sized(vec2(CONTENT, ROW), egui::Button::new("Snapshot"))
+            .add_sized(vec2(width, ROW), egui::Button::new("Snapshot"))
             .on_hover_text("save what is shown as PNG, and the temperatures as CSV")
             .clicked()
         {
@@ -634,7 +703,7 @@ impl Viewer {
         let mut picked = None;
         let combo = egui::ComboBox::from_id_salt("camera")
             .selected_text(selected)
-            .width(CONTENT)
+            .width(ui.available_width())
             .truncate()
             .show_ui(ui, |ui| {
                 for d in &self.devices {
@@ -673,7 +742,8 @@ impl Viewer {
         });
     }
 
-    fn view(&mut self, ui: &mut Ui) {
+    /// The image, and its colour bar beside it or, with `below`, under it.
+    fn view(&mut self, ui: &mut Ui, below: bool) {
         let (Some(image), Some(texture)) = (&self.image, &self.texture) else {
             let status = self.live.status();
             ui.centered_and_justified(|ui| ui.label(RichText::new(status).color(pal::MUTED)));
@@ -683,7 +753,12 @@ impl Viewer {
 
         // Fit the image and its colour bar, keeping the aspect ratio, centred.
         let area = ui.available_rect_before_wrap();
-        let room = vec2(area.width() - LEGEND, area.height()).max(Vec2::splat(1.0));
+        let room = if below {
+            vec2(area.width(), area.height() - LEGEND_BELOW)
+        } else {
+            vec2(area.width() - LEGEND, area.height())
+        }
+        .max(Vec2::splat(1.0));
         let aspect = w as f32 / h as f32;
         let size = if room.x / room.y > aspect {
             vec2(room.y * aspect, room.y)
@@ -793,7 +868,7 @@ impl Viewer {
             );
         }
 
-        let legend = self.legend(painter, rect);
+        let legend = self.legend(painter, rect, below);
         self.capture = rect.union(legend);
         // The zoom buttons show while the pointer is over the image and for a
         // moment after, fading out; never in a snapshot.
@@ -861,21 +936,41 @@ impl Viewer {
         );
     }
 
-    /// Colour bar with five evenly spaced labels; returns the area it used.
-    fn legend(&self, painter: &Painter, image: Rect) -> Rect {
+    /// Colour bar with five evenly spaced labels, right of the image or, with
+    /// `below`, under it; returns the area it used.
+    fn legend(&self, painter: &Painter, image: Rect, below: bool) -> Rect {
         // Inset, so the end labels keep clear of the window edge.
-        let bar = Rect::from_min_size(
-            pos2(image.right() + 2.0 * GAP, image.top() + PAD),
-            vec2(BAR, (image.height() - 2.0 * PAD).max(0.0)),
-        );
+        let bar = if below {
+            Rect::from_min_size(
+                pos2(image.left() + PAD, image.bottom() + 2.0 * GAP),
+                vec2((image.width() - 2.0 * PAD).max(0.0), BAR),
+            )
+        } else {
+            Rect::from_min_size(
+                pos2(image.right() + 2.0 * GAP, image.top() + PAD),
+                vec2(BAR, (image.height() - 2.0 * PAD).max(0.0)),
+            )
+        };
         let lut = self.palette();
         let slices = 64;
-        let step = bar.height() / slices as f32;
         for k in 0..slices {
-            let top = bar.top() + k as f32 * step;
-            let slice =
-                Rect::from_min_max(pos2(bar.left(), top), pos2(bar.right(), top + step + 0.5));
-            let hot = 1.0 - (k as f32 + 0.5) / slices as f32;
+            let f = k as f32 / slices as f32;
+            // Cold to hot: left to right under the image, bottom to top beside it.
+            let (slice, hot) = if below {
+                let left = bar.left() + f * bar.width();
+                let right = left + bar.width() / slices as f32 + 0.5;
+                (
+                    Rect::from_min_max(pos2(left, bar.top()), pos2(right, bar.bottom())),
+                    f + 0.5 / slices as f32,
+                )
+            } else {
+                let top = bar.top() + f * bar.height();
+                let bottom = top + bar.height() / slices as f32 + 0.5;
+                (
+                    Rect::from_min_max(pos2(bar.left(), top), pos2(bar.right(), bottom)),
+                    1.0 - f - 0.5 / slices as f32,
+                )
+            };
             painter.rect_filled(slice, 0.0, lut[(hot * 255.0) as usize]);
         }
         painter.rect_stroke(bar, 0.0, Stroke::new(1.0, pal::BORDER), StrokeKind::Outside);
@@ -883,15 +978,30 @@ impl Viewer {
         let [lo, hi] = self.range();
         for k in 0..=4 {
             let f = k as f32 / 4.0;
+            let (at, align) = if below {
+                (
+                    pos2(bar.left() + f * bar.width(), bar.bottom() + GAP),
+                    Align2::CENTER_TOP,
+                )
+            } else {
+                (
+                    pos2(bar.right() + GAP, bar.bottom() - f * bar.height()),
+                    Align2::LEFT_CENTER,
+                )
+            };
             painter.text(
-                pos2(bar.right() + GAP, bar.bottom() - f * bar.height()),
-                Align2::LEFT_CENTER,
+                at,
+                align,
                 format!("{:.1}", lo + (hi - lo) * f),
                 FontId::proportional(11.0),
                 pal::MUTED,
             );
         }
-        bar.with_max_x(image.right() + LEGEND).expand(GAP)
+        if below {
+            bar.with_max_y(image.bottom() + LEGEND_BELOW).expand(GAP)
+        } else {
+            bar.with_max_x(image.right() + LEGEND).expand(GAP)
+        }
     }
 
     /// Writes the snapshot once the screenshot asked for by the button arrives,
@@ -924,23 +1034,53 @@ impl eframe::App for Viewer {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.refresh(ui.ctx());
         self.save_snapshot(ui);
-        // Every row is sized to CONTENT, which the margin makes exactly the
-        // panel's inner width: anything wider would push the panel off-screen.
-        egui::Panel::right("controls")
-            .exact_size(SIDEBAR)
-            .resizable(false)
-            .frame(egui::Frame::new().fill(pal::BG).inner_margin(PAD))
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| self.controls(ui));
+        // The root covers the whole screen, which on a phone includes what the
+        // system bars and the camera cutout hide: fill it all, lay out inside
+        // the rest. On the desktop the two are the same.
+        ui.painter().rect_filled(ui.max_rect(), 0.0, pal::BG);
+        let ui = &mut ui.new_child(egui::UiBuilder::new().max_rect(ui.ctx().content_rect()));
+        let size = ui.available_size();
+        let controls = egui::Frame::new().fill(pal::BG).inner_margin(PAD);
+        if size.x < size.y {
+            // Portrait, as on a phone, where a sidebar would leave the image a
+            // sliver: the image across the full width with its colour bar
+            // under it, the status, then the controls in what is left, never
+            // less than about a quarter of the height.
+            let height = self.image.as_ref().map_or(size.y / 2.0, |image| {
+                size.x * image.height as f32 / image.width as f32 + LEGEND_BELOW
             });
-        egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.view(ui));
+            egui::Panel::top("image")
+                .exact_size(height.min(size.y * 0.7))
+                .frame(egui::Frame::new())
+                .show(ui, |ui| self.view(ui, true));
+            egui::Panel::top("status").show(ui, |ui| self.status_bar(ui));
+            egui::CentralPanel::default()
+                .frame(controls)
+                .show(ui, |ui| self.scrolled_controls(ui));
+        } else {
+            egui::Panel::right("controls")
+                .exact_size(SIDEBAR)
+                .resizable(false)
+                .frame(controls)
+                .show(ui, |ui| self.scrolled_controls(ui));
+            egui::Panel::bottom("status").show(ui, |ui| self.status_bar(ui));
+            egui::CentralPanel::default().show(ui, |ui| self.view(ui, false));
+        }
         // Frames arrive at 25 Hz; poll a little faster than that.
         ui.ctx().request_repaint_after(Duration::from_millis(20));
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, &self.s);
+    }
+
+    /// NativeActivity draws under the system bars, so the UI is kept inside
+    /// the part of the screen they leave free; and the keyboard needs a nudge.
+    #[cfg(target_os = "android")]
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        raw_input.safe_area_insets = crate::android::insets()
+            .map(|insets| egui::SafeAreaInsets(insets / ctx.pixels_per_point()));
+        crate::android::keep_keyboard(ctx.text_edit_focused());
     }
 }
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Fullscreen, and into the camera cutout too, rather than a black band beside it: the viewer
+      keeps its controls clear of both through the content rect (src/android.rs, `insets`).
+    -->
+    <style name="Fullscreen" parent="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen">
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="28">shortEdges</item>
+    </style>
+</resources>

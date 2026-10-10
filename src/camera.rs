@@ -16,7 +16,12 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use nusb::transfer::{Bulk, ControlIn, ControlOut, ControlType, In, Recipient};
-use nusb::{DeviceInfo, Endpoint, Interface, MaybeFuture};
+use nusb::{Endpoint, Interface, MaybeFuture};
+// Android apps may not enumerate or open USB devices themselves.
+#[cfg(target_os = "android")]
+use crate::android::{self as usb, DeviceInfo};
+#[cfg(not(target_os = "android"))]
+use nusb::{self as usb, DeviceInfo};
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -142,7 +147,7 @@ fn device_of(info: &DeviceInfo, model: Model) -> Device {
 }
 
 fn cameras() -> Result<Vec<(DeviceInfo, Device, Model)>> {
-    Ok(nusb::list_devices()
+    Ok(usb::list_devices()
         .wait()?
         .filter_map(|info| {
             let model = model_of(&info)?;
@@ -216,6 +221,12 @@ pub struct Camera {
     pending: Vec<u8>,
 }
 
+/// Why opening usually fails: on Linux, no access without the udev rule.
+#[cfg(not(target_os = "android"))]
+const OPEN_HINT: &str = " (is the udev rule installed? see `make udev`)";
+#[cfg(target_os = "android")]
+const OPEN_HINT: &str = "";
+
 /// Open a camera. `None` picks the first one found.
 pub fn open(spec: Option<&str>) -> Result<Camera> {
     let spec = spec.map(parse_spec).transpose()?;
@@ -223,12 +234,10 @@ pub fn open(spec: Option<&str>) -> Result<Camera> {
         .into_iter()
         .find(|(_, d, _)| spec.as_ref().is_none_or(|s| s.matches(d)))
         .ok_or("no thermal camera found")?;
-    let usb = info.open().wait().map_err(|e| {
-        format!(
-            "{}: {e} (is the udev rule installed? see `make udev`)",
-            device.id
-        )
-    })?;
+    let usb = info
+        .open()
+        .wait()
+        .map_err(|e| format!("{}: {e}{OPEN_HINT}", device.id))?;
     Ok(Camera {
         model,
         id: device.id,
