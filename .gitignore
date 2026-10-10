@@ -23,3 +23,10 @@ Cargo.lock
 # snapshots from the viewer
 /rsttherm-*.png
 /rsttherm-*.csv
+
+# Android: the cross-built library and Gradle's own state
+/android/.gradle/
+/android/build/
+/android/app/build/
+/android/app/src/main/jniLibs/
+/android/local.properties

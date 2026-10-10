@@ -11,7 +11,12 @@ DEB_DEPS := pkg-config libxkbcommon-dev libwayland-dev libgtk-3-dev \
 RPM_DEPS := pkgconf-pkg-config libxkbcommon-devel wayland-devel gtk3-devel libxcb-devel
 ARCH_DEPS := pkgconf libxkbcommon wayland gtk3 libxcb
 
-.PHONY: all dep udev build headless install uninstall check fmt clippy test run clean
+# Android Studio's default SDK location. Gradle finds the SDK through this, cargo-ndk the newest
+# NDK under it.
+export ANDROID_HOME ?= $(HOME)/Android/Sdk
+
+.PHONY: all dep udev build headless install uninstall check fmt clippy test run clean \
+	android-tools android apk apk-install
 
 all: dep build install
 
@@ -68,5 +73,22 @@ test:
 run:
 	cargo run --release -- gui
 
+android-tools:
+	rustup target add aarch64-linux-android x86_64-linux-android
+	@command -v cargo-ndk >/dev/null || cargo install cargo-ndk --locked
+
+# The viewer as a shared library, where Gradle packs it: arm64-v8a for phones, x86_64 for the
+# emulator, both in one APK so sideloading has a single file.
+android:
+	cargo ndk -t arm64-v8a -t x86_64 -o android/app/src/main/jniLibs build --release -p rsttherm-android
+
+# Debug-signed, which is all sideloading needs. Gradle runs `make android` itself.
+apk:
+	cd android && ./gradlew assembleDebug
+
+apk-install: apk
+	$(ANDROID_HOME)/platform-tools/adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+
 clean:
 	cargo clean
+	rm -rf android/build android/app/build android/app/src/main/jniLibs
