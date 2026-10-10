@@ -24,8 +24,22 @@ static APP: OnceLock<AndroidApp> = OnceLock::new();
 #[unsafe(no_mangle)]
 fn android_main(app: AndroidApp) {
     let _ = APP.set(app.clone());
-    // The viewer saves snapshots to the working directory, which is `/` here.
-    if let Some(dir) = app.external_data_path() {
+    // The viewer saves snapshots to the working directory, which is `/` here:
+    // Download/rsttherm, which apps may write to without a permission from
+    // Android 11 on (Pictures takes images only, not the CSV), else the app's
+    // own folder. That is `<storage>/Android/data/<package>/files`, so the
+    // storage holding Download is four levels up.
+    let dir = app.external_data_path().map(|own| {
+        let shared = own
+            .ancestors()
+            .nth(4)
+            .map(|storage| storage.join("Download/rsttherm"));
+        match shared {
+            Some(shared) if std::fs::create_dir_all(&shared).is_ok() => shared,
+            _ => own,
+        }
+    });
+    if let Some(dir) = dir {
         let _ = std::env::set_current_dir(dir);
     }
     let options = eframe::NativeOptions {
